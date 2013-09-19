@@ -1,17 +1,41 @@
 import socket
 import threading
 import socketserver
+import subprocess
 
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
         data = str(self.request.recv(1024), 'ascii')
         cur_thread = threading.current_thread()
+        tokens = []
         if data == "zimbra":
-            serverResponse = 'You are asking about zimbra'
-            response = bytes("{}: {}".format(cur_thread.name, serverResponse), 'ascii')
+            try:
+                serverResponse = 'services running'
+                response = bytes("{}: {}".format(cur_thread.name, serverResponse), 'ascii')
+#                output = subprocess.check_output('sudo ls')
+#                output = subprocess.check_output(['su','-l','-c','"zmcontrol status"','zimbra'])
+                output = subprocess.check_output(['su','-l','-c','zmcontrol status','zimbra'])
+                tokens = output.split()
+                for token in tokens:
+                    convertedstr = token.decode("utf-8")
+                    if convertedstr == "not" or convertedstr == "Stopped":
+                        serverResponse = 'some or all services are not running'
+            except:
+                serverResponse = "Zimbra may not be installed or running"
+
+#            print (tokens)
+
         elif data == "openvpn":
-            serverResponse = 'You are asking about openvpn'
+            try:            
+                output = subprocess.check_output(['./etc/init.d/openvpn','status'])
+                serverResponse = 'services running'
+                for token in tokens:
+                    convertedstr = token.decode("utf-8")
+                    if convertedstr == "not" or convertedstr == "Stopped":
+                        serverResponse = 'some or all services are not running'
+            except Exception:
+                serverResponse = "openvpn may not be installed"
             response = bytes("{}: {}".format(cur_thread.name, serverResponse), 'ascii')
         else:
             serverResponse = 'I do not know what you are asking about'
@@ -34,18 +58,24 @@ def client(ip, port, message):
 
 if __name__ == "__main__":
     # Port 0 means to select an arbitrary unused port
-    HOST, PORT = "localhost", 0
+    HOST, PORT = "0.0.0.0", 52967
 
-    server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
-    ip, port = server.server_address
+    try:
+        server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
+        ip, port = server.server_address
 
     # Start a thread with the server -- that thread will then start one
     # more thread for each request
-    server_thread = threading.Thread(target=server.serve_forever)
+        server_thread = threading.Thread(target=server.serve_forever)
     # Exit the server thread when the main thread terminates
-    server_thread.daemon = True
-    server_thread.start()
-    print("Server loop running in thread:", server_thread.name)
+        server_thread.daemon = True
+        server_thread.start()
+        print("Server loop running in thread:", server_thread.name)
+        while True:
+            pass
+    
+    except Exception:
+        print ('Server error --- stopping')
 
     client(ip, port, "zimbra")
     client(ip, port, "openvpn")
